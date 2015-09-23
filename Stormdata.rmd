@@ -1,0 +1,105 @@
+#Quantification of natural disaster influence on public health and economic impact
+#David C Latshaw II
+
+##Synopsis  
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+##Data Source
+
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file from the course web site:
+
+[Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) [47Mb]
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+[National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+[National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+##Data Processing
+
+In order to load the data unzip it and read it into a new variable. The read.csv command can use compressed files directly. All manipulation of the data is handled in subsequent steps so no additional preprocessing of the data is needed:
+```{r, echo=TRUE}
+stormData<-read.csv("repdata-data-StormData.csv.bz2")
+```  
+
+###What types of disasters are most harmful to public health?
+To answer this question first we will total the number of fatalities and injuries for each disaster then obtain the total amount for each disaster type. Please note that many different approaches could be taken to evaluate this question and while this metric may seems simplistic, it addresses the question directly:
+```{r, echo=TRUE}
+library(plyr)
+stormData<-mutate(stormData,FAT_INJ_TOT=FATALITIES+INJURIES)
+stormFatalities<-aggregate(FAT_INJ_TOT~EVTYPE, data=stormData, FUN=sum)
+```  
+Next we will sort from highest to lowest fatality and injury total and take the top 1% worst disasters:
+```{r, echo=TRUE}
+stormFatalities<-arrange(stormFatalities,-FAT_INJ_TOT)
+stormFatalities<-stormFatalities[1:round(nrow(stormFatalities)*.01),]
+```
+
+###What types of disasters have the greatest economic consequences
+To answer this question first we will total cost of property and crop damage for each disaster, with equal weight, then obtain the total amount for each disaster type. Please note that many different approaches could be taken to evaluate this question and while this metric may seems simplistic, it addresses the question directly:
+```{r, echo=TRUE}
+stormData<-mutate(stormData,TOTALPROP=ifelse(PROPDMGEXP=="K",PROPDMG*1000,ifelse(PROPDMGEXP=="M",PROPDMG*1000000,ifelse(PROPDMGEXP=="B",PROPDMG*1000000000,0))))
+stormData<-mutate(stormData,TOTALCROP=ifelse(CROPDMGEXP=="K",CROPDMG*1000,ifelse(CROPDMGEXP=="M",CROPDMG*1000000,ifelse(CROPDMGEXP=="B",CROPDMG*1000000000,0))))
+stormData<-mutate(stormData,TOTALCOST=TOTALPROP+TOTALCROP)
+stormCost<-aggregate(TOTALCOST~EVTYPE, data=stormData, FUN=sum)
+```  
+Next we will sort from highest to lowest total cost and take the top 1% worst disasters:
+```{r, echo=TRUE}
+stormCost<-arrange(stormCost,-TOTALCOST)
+stormCost<-stormCost[1:round(nrow(stormCost)*.01),]
+```
+Next we express the dollar amounts in billions so the graphs will easier to read:
+```{r, echo=TRUE}
+stormCost<-mutate(stormCost,TOTALCOST=round(TOTALCOST/1000000000,digits=1))
+```
+
+##Results
+First we will visualize the total number of fatalities and injuries by disaster type in a bar chart:
+```{r, echo=TRUE}
+library(ggplot2)
+stormFatalities <- transform(stormFatalities, EVTYPE = reorder(EVTYPE, order(FAT_INJ_TOT, decreasing=TRUE)))
+ggplot(stormFatalities, aes(x = factor(EVTYPE), y = FAT_INJ_TOT)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
+  xlab("Disaster Type") +
+  ylab("Total fatalities and injuries") +
+  ggtitle("Top 1% fatalities and injuries by disaster type")
+```
+
+**Figure 1: Bar chart of the top 1% fatalities and injuries by disaster type**  
+
+From the chart it appears that there are 3 tiers of disasters when it comes to the total number of fatlities and injuries  
+
+Tier 1- Tornados  
+Tier 2- Excessive heat, TSTM winds (maritime), floods, and lightning  
+Tier 3- Heat, flash floods, ice storms, thunderstorm winds, and winterstorms  
+
+**Tornados** are the type of natural disaster that cause the largest amount of fatalites and injuries.  
+
+Second we will visualize the total property and crop damge costs in a bar chart:
+```{r, echo=TRUE}
+stormCost <- transform(stormCost, EVTYPE = reorder(EVTYPE, order(TOTALCOST, decreasing=TRUE)))
+ggplot(stormCost, aes(x = factor(EVTYPE), y = TOTALCOST)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
+  xlab("Disaster Type") +
+  ylab("Total cost in billions of dollars") +
+  ggtitle("Top 1% property and crop damage by disaster type")
+```
+
+**Figure 2: Bar chart of the top 1% property and crop damage totals by disaster type**  
+
+From the chart it again appears that there are 3 tiers of disasters when it comes to the total economic impact of disasters  
+
+Tier 1- Floods  
+Tier 2- Hurricanes/typhons, tornados, and storm surges  
+Tier 3- Hail, flash floods, drought, hurricanes, river floods, and ice storms  
+
+**Floods** are the type of natural disaster that cause the largest amount of property and crop damage.
+
+*Note: While there is some redundancy in the resulting data, more knowledge around what goes into each data type would be required before group variables together.*
